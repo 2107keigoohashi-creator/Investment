@@ -1,7 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": [
+    "pdx1"
+  ],
   "crons": [
-    { "path": "/api/cron/daily?slot=pdt", "schedule": "30 13 * * *" },
-    { "path": "/api/cron/daily?slot=pst", "schedule": "30 14 * * *" }
+    {
+      "path": "/api/cron/daily?slot=pdt",
+      "schedule": "30 13 * * *"
+    },
+    {
+      "path": "/api/cron/daily?slot=pst",
+      "schedule": "30 14 * * *"
+    }
   ]
 }
