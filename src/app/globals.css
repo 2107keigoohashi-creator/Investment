@@ -1,73 +1,56 @@
 @import "tailwindcss";
 
-/* 色はトークンで定義し、ダークモードは OS 設定に合わせて切り替える */
+/*
+ * Maru Invest — ダークのハイテク調テーマ
+ * 濃紺の背景 + シアン/バイオレットの発光アクセント、ガラス調カード、数字は等幅フォント。
+ * チャートの系列色は dataviz の参照パレット（ダーク用・検証済みの順序）を使う。
+ */
 :root {
-  color-scheme: light;
-  --bg: #f6f6f4;
-  --surface: #ffffff;
-  --surface-2: #f0efec;
-  --border: #e4e3df;
-  --text: #0b0b0b;
-  --muted: #6b6a66;
-  --accent: #2a78d6;
-  --accent-ink: #ffffff;
-  --gain: #0a7d3c;
-  --loss: #c2312f;
-  --warn: #9a6400;
-  --warn-bg: #fff5df;
-  /* チャートの系列色（dataviz 参照パレット・検証済みの順序） */
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
-  --series-5: #e87ba4;
+  color-scheme: dark;
+  --bg: #05070d;
+  --bg-2: #0a0f1c;
+  --surface: rgba(18, 26, 46, 0.62);
+  --surface-solid: #0e1526;
+  --surface-2: rgba(120, 160, 255, 0.07);
+  --border: rgba(140, 170, 255, 0.14);
+  --border-strong: rgba(140, 170, 255, 0.28);
+  --text: #e8eefb;
+  --muted: #8a97b2;
+  --accent: #22d3ee;
+  --accent-2: #a78bfa;
+  --accent-ink: #04121a;
+  --gain: #34d399;
+  --loss: #fb7185;
+  --warn: #fbbf24;
+  --warn-bg: rgba(251, 191, 36, 0.1);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
   --series-6: #008300;
-  --series-7: #6250d6;
-  --series-8: #e34948;
-  --grid: #e4e3df;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --bg: #111110;
-    --surface: #1a1a19;
-    --surface-2: #242422;
-    --border: #2f2f2c;
-    --text: #f0efec;
-    --muted: #a3a29b;
-    --accent: #3987e5;
-    --accent-ink: #ffffff;
-    --gain: #4cc27a;
-    --loss: #f07171;
-    --warn: #f0b84a;
-    --warn-bg: #2d2412;
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --series-4: #c98500;
-    --series-5: #d55181;
-    --series-6: #008300;
-    --series-7: #9085e9;
-    --series-8: #e66767;
-    --grid: #2f2f2c;
-  }
+  --series-7: #9085e9;
+  --series-8: #e66767;
+  --grid: rgba(140, 170, 255, 0.1);
+  --glow: 0 0 0 1px rgba(34, 211, 238, 0.25), 0 0 24px rgba(34, 211, 238, 0.12);
 }
 
 @theme inline {
   --color-bg: var(--bg);
-  --color-surface: var(--surface);
+  --color-surface: var(--surface-solid);
   --color-surface-2: var(--surface-2);
   --color-border: var(--border);
   --color-text: var(--text);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
   --color-accent-ink: var(--accent-ink);
   --color-gain: var(--gain);
   --color-loss: var(--loss);
   --color-warn: var(--warn);
   --color-warn-bg: var(--warn-bg);
-  --font-sans: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Segoe UI", sans-serif;
+  --font-sans: var(--font-geist-sans), "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
 }
 
 html {
@@ -76,10 +59,29 @@ html {
 }
 
 body {
-  background: var(--bg);
   color: var(--text);
   font-family: var(--font-sans);
-  font-feature-settings: "tnum";
+  background-color: var(--bg);
+  /* 上部の発光 + 細いグリッド */
+  background-image:
+    radial-gradient(900px 420px at 15% -10%, rgba(34, 211, 238, 0.14), transparent 60%),
+    radial-gradient(700px 380px at 95% 0%, rgba(167, 139, 250, 0.14), transparent 60%),
+    linear-gradient(rgba(140, 170, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140, 170, 255, 0.045) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    32px 32px,
+    32px 32px;
+  background-attachment: fixed;
+}
+
+/* 数字は等幅（tabular-nums を付けた所はすべて） */
+.num,
+.tabular-nums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* iOS で入力時にズームしないよう 16px 以上 */
@@ -90,22 +92,60 @@ textarea {
 }
 
 .card {
-  background: var(--surface);
+  background: linear-gradient(180deg, rgba(30, 42, 72, 0.55), rgba(14, 21, 38, 0.55));
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 18px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 10px 30px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+/* 発光するカード（総資産など） */
+.card-glow {
+  position: relative;
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(20, 30, 56, 0.9), rgba(10, 15, 28, 0.9)) padding-box,
+    linear-gradient(135deg, rgba(34, 211, 238, 0.7), rgba(167, 139, 250, 0.55) 50%, rgba(34, 211, 238, 0.15)) border-box;
+  box-shadow:
+    0 0 40px rgba(34, 211, 238, 0.12),
+    0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #e8eefb, #9be8f6 45%, #c4b5fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .field {
   width: 100%;
-  background: var(--surface);
+  background: rgba(8, 12, 22, 0.75);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px;
   color: var(--text);
 }
+.field::placeholder {
+  color: #5d6a85;
+}
 .field:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: 0;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+select.field option {
+  background: var(--surface-solid);
 }
 
 .btn {
@@ -116,14 +156,21 @@ textarea {
   border-radius: 12px;
   padding: 10px 14px;
   font-weight: 600;
-  border: 1px solid var(--border);
-  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  background: rgba(20, 30, 52, 0.7);
   color: var(--text);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.btn:hover {
+  border-color: var(--accent);
 }
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
+  border: none;
   color: var(--accent-ink);
+  background: linear-gradient(135deg, #22d3ee, #818cf8 60%, #a78bfa);
+  box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
 }
 .btn:disabled {
   opacity: 0.5;
@@ -134,17 +181,109 @@ textarea {
   border-radius: 999px;
   padding: 6px 12px;
   font-size: 14px;
-  background: var(--surface);
-  color: var(--text);
+  background: rgba(14, 21, 38, 0.6);
+  color: var(--muted);
   white-space: nowrap;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .chip[aria-pressed="true"],
 .chip[aria-current="page"] {
-  background: var(--text);
-  border-color: var(--text);
-  color: var(--bg);
+  color: var(--accent);
+  border-color: rgba(34, 211, 238, 0.6);
+  background: rgba(34, 211, 238, 0.1);
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.15);
+}
+
+.tag {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.tag-accent {
+  border-color: rgba(167, 139, 250, 0.5);
+  color: var(--accent-2);
+}
+
+/* 横スクロールのチップ列はスクロールバーを隠す */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ライブの点滅 */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(52, 211, 153, 0);
+  }
+}
+.live-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* 価格が変わったときに一瞬光る */
+@keyframes flash-up {
+  0% {
+    background: rgba(52, 211, 153, 0.35);
+  }
+  100% {
+    background: transparent;
+  }
+}
+@keyframes flash-down {
+  0% {
+    background: rgba(251, 113, 133, 0.35);
+  }
+  100% {
+    background: transparent;
+  }
+}
+.flash-up {
+  animation: flash-up 1.2s ease-out;
+  border-radius: 6px;
+}
+.flash-down {
+  animation: flash-down 1.2s ease-out;
+  border-radius: 6px;
+}
+
+/* 流れるティッカー */
+@keyframes ticker {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker 60s linear infinite;
+}
+.ticker:hover .ticker-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track,
+  .live-dot,
+  .flash-up,
+  .flash-down {
+    animation: none;
+  }
 }
 
 .safe-bottom {
-  padding-bottom: calc(env(safe-area-inset-bottom) + 72px);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 84px);
 }

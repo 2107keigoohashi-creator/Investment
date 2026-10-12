@@ -11,7 +11,7 @@ export function PageHeader({ title, back, action }: { title: string; back?: stri
           </svg>
         </Link>
       )}
-      <h1 className="flex-1 text-xl font-bold">{title}</h1>
+      <h1 className="flex-1 text-xl font-bold tracking-tight">{title}</h1>
       {action}
     </header>
   );
@@ -22,7 +22,12 @@ export function Section({ title, action, children }: { title?: string; action?: 
     <section className="mb-5">
       {(title || action) && (
         <div className="mb-2 flex items-baseline justify-between px-1">
-          {title && <h2 className="text-sm font-semibold text-muted">{title}</h2>}
+          {title && (
+            <h2 className="flex items-center gap-2 text-[13px] font-semibold tracking-wide text-muted">
+              <span className="h-3 w-0.5 rounded-full bg-gradient-to-b from-accent to-accent-2" aria-hidden />
+              {title}
+            </h2>
+          )}
           {action}
         </div>
       )}

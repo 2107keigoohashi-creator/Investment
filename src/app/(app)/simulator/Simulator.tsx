@@ -25,7 +25,7 @@ const parse = (s: string) => {
 };
 
 const tooltipStyle = {
-  background: "var(--surface)",
+  background: "var(--surface-solid)",
   border: "1px solid var(--border)",
   borderRadius: 10,
   color: "var(--text)",
@@ -200,7 +200,7 @@ function Backtest({ assets, today }: { assets: AssetOption[]; today: string }) {
           <section className="card p-4">
             <div className="mb-1 flex gap-4 text-xs text-muted">
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-0.5 w-4 rounded" style={{ background: "var(--series-1)" }} />
+                <span className="inline-block h-0.5 w-4 rounded" style={{ background: "var(--accent)" }} />
                 評価額
               </span>
               <span className="flex items-center gap-1.5">
@@ -227,7 +227,7 @@ function Backtest({ assets, today }: { assets: AssetOption[]; today: string }) {
                     formatter={(v, name) => [formatMoney(Number(v)), name === "value" ? "評価額" : "投資した額"]}
                   />
                   <Line type="monotone" dataKey="invested" stroke="var(--muted)" strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
-                  <Line type="monotone" dataKey="value" stroke="var(--series-1)" strokeWidth={2} dot={false} isAnimationActive={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} />
+                  <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} dot={false} isAnimationActive={false} activeDot={{ r: 4, stroke: "var(--surface-solid)", strokeWidth: 2 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -308,7 +308,7 @@ function Projection() {
                 formatter={(v, name) => [formatMoney(Number(v)), name === "value" ? "試算額" : "積み立てた合計"]}
               />
               <Line type="monotone" dataKey="contributed" stroke="var(--muted)" strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
-              <Line type="monotone" dataKey="value" stroke="var(--series-1)" strokeWidth={2} dot={false} isAnimationActive={false} />
+              <Line type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2} dot={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

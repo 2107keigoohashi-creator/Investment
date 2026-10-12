@@ -124,6 +124,7 @@ export function isTaxableAccount(type: AccountType): boolean {
 export interface NewsItem {
   id: number;
   category: string;
+  lang: "ja" | "en";
   title: string;
   url: string;
   source: string | null;

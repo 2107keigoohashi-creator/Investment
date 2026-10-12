@@ -86,7 +86,7 @@ export function TransactionForm({
       <input type="hidden" name="amount" value={amountLike ? total : ""} />
       {type === "fee" && <input type="hidden" name="fee" value={total} />}
 
-      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="取引の種類">
+      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="取引の種類">
         {TYPES.map((t) => (
           <button key={t} type="button" className="chip" aria-pressed={type === t} onClick={() => setType(t)}>
             {TX_TYPE_LABEL[t]}

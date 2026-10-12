@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { formatMoney } from "@/lib/format";
 
 export interface ChartPoint {
@@ -74,19 +74,25 @@ export function PriceChart({
         <>
           <div className="mb-1 flex gap-4 text-xs text-muted">
             <span className="flex items-center gap-1.5">
-              <span className="inline-block h-0.5 w-4 rounded" style={{ background: "var(--series-1)" }} />
+              <span className="inline-block h-0.5 w-4 rounded" style={{ background: "var(--accent)" }} />
               価格（CAD）
             </span>
             {hasAvg && (
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-0 w-4 border-t-2 border-dashed" style={{ borderColor: "var(--series-2)" }} />
+                <span className="inline-block h-0 w-4 border-t-2 border-dashed" style={{ borderColor: "var(--accent-2)" }} />
                 平均取得単価
               </span>
             )}
           </div>
           <div className="h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+              <ComposedChart data={data} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="price-fill" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid stroke="var(--grid)" vertical={false} />
                 <XAxis
                   dataKey="date"
@@ -107,15 +113,24 @@ export function PriceChart({
                 />
                 <Tooltip
                   cursor={{ stroke: "var(--muted)", strokeWidth: 1 }}
-                  contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, color: "var(--text)", fontSize: 12 }}
+                  contentStyle={{ background: "var(--surface-solid)", border: "1px solid var(--border)", borderRadius: 10, color: "var(--text)", fontSize: 12 }}
                   labelStyle={{ color: "var(--muted)" }}
                   formatter={(v, name) => [formatMoney(Number(v)), name === "avg" ? "平均取得単価" : "価格"]}
                 />
-                <Line type="monotone" dataKey="close" stroke="var(--series-1)" strokeWidth={2} dot={false} isAnimationActive={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} />
+                <Area
+                  type="monotone"
+                  dataKey="close"
+                  stroke="var(--accent)"
+                  strokeWidth={2}
+                  fill="url(#price-fill)"
+                  dot={false}
+                  isAnimationActive={false}
+                  activeDot={{ r: 4, stroke: "var(--surface-solid)", strokeWidth: 2, fill: "var(--accent)" }}
+                />
                 {hasAvg && (
-                  <Line type="stepAfter" dataKey="avg" stroke="var(--series-2)" strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="avg" stroke="var(--accent-2)" strokeWidth={2} strokeDasharray="5 4" dot={false} isAnimationActive={false} connectNulls={false} />
                 )}
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </>

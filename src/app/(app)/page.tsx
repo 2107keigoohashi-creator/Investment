@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AllocationChart } from "@/components/AllocationChart";
 import { LiveRefresher } from "@/components/LiveRefresher";
+import { TickerTape } from "@/components/TickerTape";
+import { buildMarketRows } from "@/lib/market/rows";
 import { Empty, Section, StaleBadge } from "@/components/ui";
 import { unrealizedPct } from "@/lib/calc/portfolio";
 import { asUser, latestMetric, loadPortfolio, loadReports } from "@/lib/data";
@@ -29,6 +31,7 @@ export default async function HomePage() {
     news: await loadNews(tx, { limit: 4 }),
   }));
   const { valuation: v, assets, accounts, quotes, today } = p;
+  const tickerRows = buildMarketRows(assets, p.prices);
   const report = reports[0] ?? null;
   const hasHoldings = v.holdings.length > 0;
   const prevTotal = v.total.marketValue - v.total.dayChange;
@@ -40,18 +43,24 @@ export default async function HomePage() {
 
   return (
     <>
-      <header className="mb-4 flex items-baseline justify-between pt-2">
-        <h1 className="text-xl font-bold">Maru Invest</h1>
-        <span className="text-sm text-muted">{formatDateJa(today)}</span>
-      </header>
-      <div className="-mt-3 mb-3">
+      <header className="mb-3 flex items-center justify-between pt-2">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-accent-2 text-sm font-black text-accent-ink shadow-[0_0_18px_rgba(34,211,238,0.45)]">
+            M
+          </span>
+          <div className="leading-tight">
+            <h1 className="text-[15px] font-bold tracking-[0.16em] whitespace-nowrap">MARU INVEST</h1>
+            <div className="num text-[11px] text-muted">{formatDateJa(today)}</div>
+          </div>
+        </div>
         <LiveRefresher ids={tracked.map((a) => a.id)} />
-      </div>
+      </header>
+      <TickerTape rows={tickerRows} />
 
       {/* 総資産 */}
-      <section className="card mb-5 p-5">
-        <div className="text-sm text-muted">総資産（CAD）</div>
-        <div className="mt-1 text-4xl font-bold tracking-tight tabular-nums">{formatMoney(v.total.marketValue)}</div>
+      <section className="card card-glow mb-5 p-5">
+        <div className="label">Total assets · CAD</div>
+        <div className="text-gradient mt-1 text-[40px] leading-tight font-bold tabular-nums">{formatMoney(v.total.marketValue)}</div>
         {hasHoldings ? (
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div>

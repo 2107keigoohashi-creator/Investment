@@ -127,6 +127,7 @@ export interface PortfolioData {
   assets: Asset[];
   transactions: Transaction[];
   ledger: Ledger;
+  prices: PriceRow[];
   quotes: Record<string, CadQuote | null>;
   valuation: Valuation;
 }
@@ -143,5 +144,5 @@ export async function loadPortfolio(tx: Tx): Promise<PortfolioData> {
   const ledger = computeLedger(transactions, accounts);
   const quotes = quotesFor(assets, prices, fx);
   const valuation = valuePortfolio(ledger.positions, quotes);
-  return { today, accounts, assets, transactions, ledger, quotes, valuation };
+  return { today, accounts, assets, transactions, ledger, prices, quotes, valuation };
 }

@@ -19,7 +19,7 @@ export function BottomNav() {
   const pathname = usePathname();
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur"
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-[rgba(5,7,13,0.82)] backdrop-blur-xl"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <ul className="mx-auto grid max-w-xl grid-cols-5">
@@ -34,13 +34,13 @@ export function BottomNav() {
               <Link
                 href={it.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex h-16 flex-col items-center justify-center gap-1 text-[11px] ${active ? "text-text" : "text-muted"}`}
+                className={`relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] ${active ? "text-accent" : "text-muted"}`}
               >
                 <span
                   className={
                     it.primary
-                      ? "flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-ink"
-                      : "flex h-6 w-6 items-center justify-center"
+                      ? "flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-accent-2 text-accent-ink shadow-[0_0_20px_rgba(34,211,238,0.5)]"
+                      : `flex h-6 w-6 items-center justify-center ${active ? "drop-shadow-[0_0_6px_rgba(34,211,238,0.8)]" : ""}`
                   }
                 >
                   <svg viewBox="0 0 24 24" width={it.primary ? 20 : 22} height={it.primary ? 20 : 22} fill="none" stroke="currentColor" strokeWidth={it.primary ? 2.4 : 1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -48,6 +48,9 @@ export function BottomNav() {
                   </svg>
                 </span>
                 {it.label}
+                {active && !it.primary && (
+                  <span className="absolute top-0 h-0.5 w-8 rounded-full bg-accent shadow-[0_0_10px_rgba(34,211,238,0.9)]" aria-hidden />
+                )}
               </Link>
             </li>
           );

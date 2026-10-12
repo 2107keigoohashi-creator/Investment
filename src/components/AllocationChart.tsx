@@ -34,7 +34,7 @@ export function AllocationChart({ slices }: { slices: Slice[] }) {
               nameKey="label"
               innerRadius="62%"
               outerRadius="100%"
-              stroke={data.length > 1 ? "var(--surface)" : "none"}
+              stroke={data.length > 1 ? "var(--surface-solid)" : "none"}
               strokeWidth={2}
               startAngle={90}
               endAngle={-270}
@@ -46,7 +46,7 @@ export function AllocationChart({ slices }: { slices: Slice[] }) {
             </Pie>
             <Tooltip
               formatter={(v) => [`${formatMoney(Number(v))}（${((Number(v) / total) * 100).toFixed(1)}%）`, ""]}
-              contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, color: "var(--text)", fontSize: 12 }}
+              contentStyle={{ background: "var(--surface-solid)", border: "1px solid var(--border)", borderRadius: 10, color: "var(--text)", fontSize: 12 }}
               itemStyle={{ color: "var(--text)" }}
               separator=""
             />

@@ -3,19 +3,10 @@ import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { addWatch, type ActionState } from "@/app/actions";
 import { LiveBadge } from "@/components/LiveRefresher";
+import { Sparkline } from "@/components/Sparkline";
 import { FormMessage } from "@/components/SubmitButton";
 import { formatMoney, formatPct, signClass, staleLabel } from "@/lib/format";
-
-export interface MarketRow {
-  id: string;
-  symbol: string;
-  name: string;
-  category: string;
-  currency: string;
-  price: number | null;
-  changePct: number | null;
-  date: string | null;
-}
+import type { MarketRow } from "@/lib/market/rows";
 
 const TABS = [
   { key: "btc", label: "ビットコイン関連", cats: ["crypto", "btc_etf", "btc_stock"] },
@@ -38,7 +29,12 @@ const GROUP_LABEL: Record<string, string> = {
 
 const POLL_MS = 60_000;
 
-type LivePatch = Pick<MarketRow, "price" | "currency" | "changePct" | "date">;
+type LivePatch = Pick<MarketRow, "price" | "currency" | "changePct" | "date"> & {
+  /** 前回の表示から上がったか下がったか（光らせる用） */
+  dir: 1 | -1 | 0;
+  /** 更新の回数（アニメーションを毎回やり直すための key） */
+  n: number;
+};
 
 export function MarketBoard({ rows: initial, today }: { rows: MarketRow[]; today: string }) {
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("btc");
@@ -75,7 +71,16 @@ export function MarketBoard({ rows: initial, today }: { rows: MarketRow[]; today
           setLive((prev) => {
             const next = { ...prev };
             for (const q of data.quotes) {
-              next[q.assetId] = { price: q.price, currency: q.currency, changePct: q.changePct ?? prev[q.assetId]?.changePct ?? null, date: q.date };
+              const before = prev[q.assetId]?.price ?? initial.find((r) => r.id === q.assetId)?.price ?? null;
+              const dir = before === null || before === q.price ? 0 : q.price > before ? 1 : -1;
+              next[q.assetId] = {
+                price: q.price,
+                currency: q.currency,
+                changePct: q.changePct ?? prev[q.assetId]?.changePct ?? null,
+                date: q.date,
+                dir,
+                n: (prev[q.assetId]?.n ?? 0) + 1,
+              };
             }
             return next;
           });
@@ -94,6 +99,8 @@ export function MarketBoard({ rows: initial, today }: { rows: MarketRow[]; today
       stopped = true;
       clearTimeout(timer);
     };
+    // initial は新しいサーバー描画のたびに変わるが、ポーリングはやり直さない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey]);
 
   const groups = useMemo(() => {
@@ -104,14 +111,14 @@ export function MarketBoard({ rows: initial, today }: { rows: MarketRow[]; today
 
   return (
     <>
-      <header className="mb-3 flex items-baseline justify-between pt-2">
-        <h1 className="text-xl font-bold">マーケット</h1>
+      <header className="mb-3 flex items-baseline justify-between">
+        <h1 className="text-xl font-bold tracking-tight">マーケット</h1>
         <LiveBadge at={at} failed={failed} />
       </header>
 
       <SearchBox />
 
-      <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="カテゴリ">
+      <div className="no-scrollbar -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="カテゴリ">
         {TABS.map((t) => (
           <button key={t.key} type="button" className="chip" aria-pressed={tab === t.key} onClick={() => setTab(t.key)}>
             {t.label}
@@ -123,17 +130,21 @@ export function MarketBoard({ rows: initial, today }: { rows: MarketRow[]; today
 
       {groups.map(([cat, list]) => (
         <section key={cat} className="mb-5">
-          <h2 className="mb-2 px-1 text-sm font-semibold text-muted">{GROUP_LABEL[cat] ?? cat}</h2>
+          <h2 className="label mb-2 px-1">{GROUP_LABEL[cat] ?? cat}</h2>
           <ul className="card divide-y divide-border">
-            {list.map((r) => (
+            {list.map((r) => {
+              const lv = live[r.id];
+              const flash = lv && lv.dir !== 0 ? (lv.dir > 0 ? "flash-up" : "flash-down") : "";
+              return (
               <li key={r.id}>
                 <Link href={`/assets/${encodeURIComponent(r.symbol)}`} className="flex items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold">{r.symbol}</div>
+                    <div className="font-semibold tracking-tight">{r.symbol}</div>
                     <div className="truncate text-xs text-muted">{r.name}</div>
                   </div>
-                  <div className="text-right">
-                    <div className="font-semibold tabular-nums">
+                  <Sparkline values={r.price !== null && r.spark.at(-1) !== r.price ? [...r.spark, r.price] : r.spark} />
+                  <div className="w-28 text-right">
+                    <div key={lv?.n ?? 0} className={`font-semibold tabular-nums ${flash}`}>
                       {r.price !== null ? formatMoney(r.price, r.currency, r.price >= 1000 ? 0 : 2) : "—"}
                     </div>
                     <div className="text-xs tabular-nums">
@@ -145,7 +156,8 @@ export function MarketBoard({ rows: initial, today }: { rows: MarketRow[]; today
                   </div>
                 </Link>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </section>
       ))}

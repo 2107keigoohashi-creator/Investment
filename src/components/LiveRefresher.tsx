@@ -57,16 +57,16 @@ export function LiveRefresher({ ids, intervalMs = 60_000 }: { ids?: string[]; in
 
 export function LiveBadge({ at, failed }: { at: Date | null; failed: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[11px] text-muted" aria-live="polite">
+    <span className="num inline-flex items-center gap-1.5 text-[11px] text-muted" aria-live="polite">
       <span
-        className={`h-1.5 w-1.5 rounded-full ${failed ? "bg-warn" : at ? "bg-gain" : "bg-muted"}`}
+        className={`h-1.5 w-1.5 rounded-full ${failed ? "bg-warn" : at ? "live-dot bg-gain" : "bg-muted"}`}
         aria-hidden
       />
       {failed
-        ? "リアルタイム取得に失敗（前回の値）"
+        ? "LIVE 取得失敗・前回の値"
         : at
-          ? `リアルタイム ${at.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
-          : "リアルタイム取得中…"}
+          ? `LIVE ${at.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
+          : "LIVE 接続中…"}
     </span>
   );
 }
