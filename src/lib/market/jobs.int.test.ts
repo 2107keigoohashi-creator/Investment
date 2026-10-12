@@ -1,6 +1,5 @@
 // DB を使う結合テスト。TEST_DATABASE_URL（所有者ロール）があるときだけ動く
 //   TEST_DATABASE_URL=postgres://... npm test
-import postgres from "postgres";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 const url = process.env.TEST_DATABASE_URL;

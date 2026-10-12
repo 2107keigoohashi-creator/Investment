@@ -6,7 +6,7 @@ import { finnhub } from "./finnhub";
 import { fetchBocFx } from "./fx";
 
 function mockFetch(body: unknown, status = 200) {
-  const fn = vi.fn(async (_input: string) => new Response(JSON.stringify(body), { status }));
+  const fn = vi.fn<(input: string) => Promise<Response>>(async () => new Response(JSON.stringify(body), { status }));
   vi.stubGlobal("fetch", fn);
   return fn;
 }
