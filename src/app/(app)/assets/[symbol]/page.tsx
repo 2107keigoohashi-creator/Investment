@@ -7,29 +7,29 @@ import { PageHeader, Section, StaleBadge } from "@/components/ui";
 import { averageCost, averageCostHistory, computeLedger } from "@/lib/calc/acb";
 import { todayIn } from "@/lib/calc/dates";
 import { cadSeries, latestCadQuote, unrealizedPct } from "@/lib/calc/portfolio";
-import { getDb, loadAccounts, loadFx, loadPrices, loadReports, loadTransactions, requireUser, TZ } from "@/lib/data";
+import { asUser, loadAccounts, loadAssetBySymbol, loadFx, loadPrices, loadReports, loadTransactions, TZ } from "@/lib/data";
 import { ACCOUNT_TYPE_LABEL, ASSET_TYPE_LABEL, formatMoney, formatPct, formatQty, formatSigned, signClass, staleLabel } from "@/lib/format";
-import type { Asset } from "@/lib/types";
 import { ManualPriceForm } from "./ManualPriceForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function AssetPage({ params }: PageProps<"/assets/[symbol]">) {
-  await requireUser();
   const { symbol: raw } = await params;
   const symbol = decodeURIComponent(raw).toUpperCase();
-  const db = await getDb();
-  const { data: assetRow } = await db.from("assets").select("*").eq("symbol", symbol).maybeSingle();
-  if (!assetRow) notFound();
-  const asset = assetRow as Asset;
-
-  const [accounts, transactions, prices, fx, reports] = await Promise.all([
-    loadAccounts(db),
-    loadTransactions(db, asset.id),
-    loadPrices(db, { assetId: asset.id }),
-    loadFx(db),
-    loadReports(db, { target: asset.symbol, limit: 30 }),
-  ]);
+  const data = await asUser(async (tx) => {
+    const asset = await loadAssetBySymbol(tx, symbol);
+    if (!asset) return null;
+    return {
+      asset,
+      accounts: await loadAccounts(tx),
+      transactions: await loadTransactions(tx, asset.id),
+      prices: await loadPrices(tx, { assetId: asset.id }),
+      fx: await loadFx(tx),
+      reports: await loadReports(tx, { target: asset.symbol, limit: 30 }),
+    };
+  });
+  if (!data) notFound();
+  const { asset, accounts, transactions, prices, fx, reports } = data;
   const today = todayIn(TZ);
   const ledger = computeLedger(transactions, accounts);
   const positions = ledger.positions.filter((p) => p.assetId === asset.id);

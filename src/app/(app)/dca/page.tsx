@@ -3,29 +3,25 @@ import { Empty, Notice, PageHeader, Section } from "@/components/ui";
 import { addDays, todayIn } from "@/lib/calc/dates";
 import { compareDcaVsLumpSum, nextDcaDate } from "@/lib/calc/dca";
 import { cadSeries } from "@/lib/calc/portfolio";
-import { getDb, loadAccounts, loadAssets, loadFx, loadPrices, requireUser, TZ } from "@/lib/data";
+import { asUser, loadAccounts, loadAssets, loadDcaPlans, loadFx, loadPrices, TZ } from "@/lib/data";
 import { formatDateJa, formatMoney, formatPct, formatQty, FREQUENCY_LABEL, signClass, WEEKDAY_LABEL } from "@/lib/format";
-import type { DcaPlan } from "@/lib/types";
 import { DcaForm } from "./DcaForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function DcaPage() {
-  await requireUser();
-  const db = await getDb();
   const today = todayIn(TZ);
-  const [accounts, assets, plansRes, prices, fx] = await Promise.all([
-    loadAccounts(db),
-    loadAssets(db),
-    db.from("dca_plans").select("*").order("created_at"),
-    loadPrices(db, { since: addDays(today, -366) }),
-    loadFx(db, addDays(today, -400)),
-  ]);
-  const plans = (plansRes.data ?? []).map((p) => ({ ...p, amount: Number(p.amount) })) as DcaPlan[];
+  const { accounts, assets, plans, prices, fx } = await asUser(async (tx) => ({
+    accounts: await loadAccounts(tx),
+    assets: await loadAssets(tx),
+    plans: await loadDcaPlans(tx),
+    prices: await loadPrices(tx, { since: addDays(today, -366) }),
+    fx: await loadFx(tx, addDays(today, -400)),
+  }));
   const assetById = new Map(assets.map((a) => [a.id, a]));
   const accountById = new Map(accounts.map((a) => [a.id, a]));
 
-  const scheduleText = (p: DcaPlan) => {
+  const scheduleText = (p: (typeof plans)[number]) => {
     if (p.frequency === "monthly") return `毎月 ${p.day_of_month ?? Number(p.start_date.slice(8, 10))} 日`;
     if (p.frequency === "weekly" || p.frequency === "biweekly")
       return `${FREQUENCY_LABEL[p.frequency]} ${WEEKDAY_LABEL[p.day_of_week ?? new Date(p.start_date).getUTCDay()]}曜`;

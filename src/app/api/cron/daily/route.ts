@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { hourIn } from "@/lib/calc/dates";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { runDailyFetch } from "@/lib/market/jobs";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { ownerSql } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   if (!force && hour !== 6) {
     return NextResponse.json({ skipped: true, reason: `バンクーバー時間 ${hour} 時のためスキップ` });
   }
-  const results = await runDailyFetch(createAdminClient());
+  const results = await runDailyFetch(ownerSql());
   const ok = results.every((r) => r.ok);
   return NextResponse.json({ ok, results }, { status: ok ? 200 : 207 });
 }

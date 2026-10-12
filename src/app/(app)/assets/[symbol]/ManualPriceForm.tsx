@@ -9,8 +9,8 @@ export function ManualPriceForm({ assetId, defaultCurrency, today }: { assetId: 
     <form action={action} className="card space-y-2 p-4">
       <p className="text-xs text-muted">自動取得できない日や銘柄の終値を入れられます（同じ日・通貨は上書き）。</p>
       <input type="hidden" name="asset_id" value={assetId} />
-      <div className="grid grid-cols-[1fr_1fr_5rem] gap-2">
-        <input name="date" type="date" defaultValue={today} className="field" aria-label="日付" />
+      <input name="date" type="date" defaultValue={today} className="field" aria-label="日付" />
+      <div className="grid grid-cols-[1fr_6rem] gap-2">
         <input name="close" inputMode="decimal" placeholder="終値" className="field" aria-label="終値" />
         <select name="currency" defaultValue={defaultCurrency} className="field" aria-label="通貨">
           <option>CAD</option>

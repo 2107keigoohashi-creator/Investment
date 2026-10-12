@@ -1,14 +1,37 @@
--- Maru Invest: 初期スキーマ
--- 全テーブルに user_id を持たせ、RLS で「自分の行だけ」読み書きできるようにする。
--- 価格・為替の自動取得（Vercel Cron）は service_role キーで RLS をバイパスして書き込む。
+-- Maru Invest: 初期スキーマ（Neon / Postgres）
+--
+-- RLS の仕組み:
+--   アプリは 1 リクエストごとにトランザクションを張り、
+--     set_config('app.user_id', <ログイン中のユーザー ID>, true)
+--     set local role maru_app
+--   を実行してからクエリを流す。maru_app には RLS がかかり、user_id が一致する行だけ読み書きできる。
+--   Cron やマイグレーション、Claude（Neon MCP）は所有者ロールで接続するので RLS をバイパスする。
 
--- ---------------------------------------------------------------------------
--- 共通: updated_at 自動更新
--- ---------------------------------------------------------------------------
+create extension if not exists pgcrypto;
+
+-- アプリが SET ROLE で切り替えるロール（ログイン不可・パスワード不要）
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'maru_app') then
+    create role maru_app nologin;
+  end if;
+end;
+$$;
+grant maru_app to current_user;
+grant usage on schema public to maru_app;
+
+-- 現在のユーザー ID（未設定なら null）
+create or replace function public.current_app_user()
+returns uuid
+language sql
+stable
+as $$
+  select nullif(current_setting('app.user_id', true), '')::uuid
+$$;
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
-set search_path = ''
 as $$
 begin
   new.updated_at = now();
@@ -17,10 +40,20 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- app_users: ログインユーザー（パスワードは pgcrypto の bcrypt ハッシュ）
+-- ---------------------------------------------------------------------------
+create table public.app_users (
+  id uuid primary key default gen_random_uuid(),
+  email text not null unique check (email = lower(email)),
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+-- ---------------------------------------------------------------------------
 -- user_settings: 基準通貨など
 -- ---------------------------------------------------------------------------
 create table public.user_settings (
-  user_id uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid primary key default public.current_app_user() references public.app_users (id) on delete cascade,
   base_currency text not null default 'CAD' check (base_currency ~ '^[A-Z]{3}$'),
   timezone text not null default 'America/Vancouver',
   created_at timestamptz not null default now(),
@@ -32,7 +65,7 @@ create table public.user_settings (
 -- ---------------------------------------------------------------------------
 create table public.accounts (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   name text not null,
   institution text,
   -- tfsa / rrsp / fhsa は登録口座（譲渡益課税の対象外）、non_registered と exchange は課税口座
@@ -51,7 +84,7 @@ create index accounts_user_id_idx on public.accounts (user_id);
 -- ---------------------------------------------------------------------------
 create table public.assets (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   symbol text not null,                 -- BTC, VFV.TO, AAPL ...
   name text not null,
   asset_type text not null check (asset_type in ('crypto', 'stock', 'etf', 'cash')),
@@ -72,7 +105,7 @@ create index assets_user_id_idx on public.assets (user_id);
 -- ---------------------------------------------------------------------------
 create table public.transactions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   account_id uuid not null references public.accounts (id) on delete restrict,
   asset_id uuid references public.assets (id) on delete restrict,
   type text not null check (type in ('buy', 'sell', 'deposit', 'withdraw', 'dividend', 'fee', 'transfer')),
@@ -102,7 +135,7 @@ create index transactions_transfer_account_idx on public.transactions (transfer_
 -- ---------------------------------------------------------------------------
 create table public.prices (
   id bigint generated always as identity primary key,
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   asset_id uuid not null references public.assets (id) on delete cascade,
   date date not null,
   close numeric(38, 18) not null check (close >= 0),
@@ -118,7 +151,7 @@ create index prices_asset_date_idx on public.prices (asset_id, date desc);
 -- ---------------------------------------------------------------------------
 create table public.fx_rates (
   id bigint generated always as identity primary key,
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   date date not null,
   base text not null check (base ~ '^[A-Z]{3}$'),
   quote text not null check (quote ~ '^[A-Z]{3}$'),
@@ -134,7 +167,7 @@ create index fx_rates_user_pair_date_idx on public.fx_rates (user_id, base, quot
 -- ---------------------------------------------------------------------------
 create table public.market_metrics (
   id bigint generated always as identity primary key,
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   date date not null,
   metric text not null,          -- 'fear_greed' など
   value numeric not null,
@@ -146,11 +179,11 @@ create table public.market_metrics (
 create index market_metrics_user_metric_date_idx on public.market_metrics (user_id, metric, date desc);
 
 -- ---------------------------------------------------------------------------
--- reports: 毎朝のレポート（Claude が Supabase MCP から INSERT する）
+-- reports: 毎朝のレポート（Claude が Neon MCP から INSERT する）
 -- ---------------------------------------------------------------------------
 create table public.reports (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   report_date date not null,
   target text not null default 'btc',   -- 'btc' / 'portfolio' / 銘柄ティッカー（'VFV.TO' など）
   headline text not null,
@@ -173,7 +206,7 @@ create index reports_user_date_idx on public.reports (user_id, report_date desc)
 -- ---------------------------------------------------------------------------
 create table public.dca_plans (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  user_id uuid not null default public.current_app_user() references public.app_users (id) on delete cascade,
   asset_id uuid not null references public.assets (id) on delete cascade,
   account_id uuid not null references public.accounts (id) on delete cascade,
   amount numeric(38, 18) not null check (amount > 0),
@@ -215,10 +248,16 @@ begin
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format(
-      'create policy "own rows" on public.%I for all to authenticated '
-      'using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))',
+      'create policy own_rows on public.%I for all to maru_app '
+      'using (user_id = public.current_app_user()) with check (user_id = public.current_app_user())',
       t
     );
+    execute format('grant select, insert, update, delete on public.%I to maru_app', t);
   end loop;
 end;
 $$;
+
+-- app_users は自分の行の id / email だけ読める（パスワードハッシュは読めない）
+alter table public.app_users enable row level security;
+create policy own_row on public.app_users for select to maru_app using (id = public.current_app_user());
+grant select (id, email, created_at) on public.app_users to maru_app;

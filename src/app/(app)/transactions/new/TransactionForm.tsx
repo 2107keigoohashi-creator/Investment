@@ -45,6 +45,10 @@ export function TransactionForm({
   const [priceOverride, setPriceOverride] = useState("");
   const [fx, setFx] = useState(usdCad ? String(usdCad.rate) : "");
   const [showDetails, setShowDetails] = useState(false);
+  // エラーで戻ったときに入力が消えないよう、すべて controlled にする
+  const [tradeDate, setTradeDate] = useState(today);
+  const [note, setNote] = useState("");
+  const [transferTo, setTransferTo] = useState("");
 
   const needsQty = type === "buy" || type === "sell" || type === "transfer";
   const amountLike = type === "deposit" || type === "withdraw" || type === "dividend";
@@ -117,7 +121,7 @@ export function TransactionForm({
       {type === "transfer" && (
         <label className="block">
           <span className="mb-1 block text-xs text-muted">移動先の口座</span>
-          <select name="transfer_account_id" className="field" defaultValue="">
+          <select name="transfer_account_id" className="field" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}>
             <option value="" disabled>
               選んでください
             </option>
@@ -195,7 +199,7 @@ export function TransactionForm({
         <div className="grid grid-cols-2 gap-2">
           <label className="block">
             <span className="mb-1 block text-xs text-muted">日付</span>
-            <input name="trade_date" type="date" defaultValue={today} className="field" />
+            <input name="trade_date" type="date" value={tradeDate} onChange={(e) => setTradeDate(e.target.value)} className="field" />
           </label>
           <label className="block">
             <span className="mb-1 block text-xs text-muted">通貨</span>
@@ -227,7 +231,7 @@ export function TransactionForm({
         )}
         <label className="block">
           <span className="mb-1 block text-xs text-muted">メモ</span>
-          <input name="note" className="field" />
+          <input name="note" value={note} onChange={(e) => setNote(e.target.value)} className="field" />
         </label>
       </div>
 

@@ -4,8 +4,6 @@
 create or replace function public.bootstrap_user(uid uuid)
 returns void
 language plpgsql
-security definer
-set search_path = ''
 as $$
 declare
   btc_id uuid;
@@ -47,13 +45,11 @@ begin
 end;
 $$;
 
-revoke execute on function public.bootstrap_user(uuid) from public, anon, authenticated;
+revoke execute on function public.bootstrap_user(uuid) from public;
 
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
-security definer
-set search_path = ''
 as $$
 begin
   perform public.bootstrap_user(new.id);
@@ -61,19 +57,6 @@ begin
 end;
 $$;
 
-revoke execute on function public.handle_new_user() from public, anon, authenticated;
-
-create trigger on_auth_user_created
-  after insert on auth.users
+create trigger on_app_user_created
+  after insert on public.app_users
   for each row execute function public.handle_new_user();
-
--- マイグレーション実行時点で既にユーザーがいれば、その人にも入れる
-do $$
-declare
-  u record;
-begin
-  for u in select id from auth.users loop
-    perform public.bootstrap_user(u.id);
-  end loop;
-end;
-$$;

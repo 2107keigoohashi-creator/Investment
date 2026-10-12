@@ -3,7 +3,8 @@
 自分専用の投資管理アプリ（カナダ・バンクーバー在住、基準通貨 CAD、日本語 UI、スマホ優先の PWA）。
 
 - Next.js 16（App Router）+ TypeScript + Tailwind CSS v4
-- Supabase（Postgres / Auth / RLS）
+- Neon（Postgres、無料枠）+ RLS
+- ログイン: メール＋パスワード（pgcrypto の bcrypt で照合、署名付き Cookie セッション）
 - Vercel（ホスティング + Cron）
 - 価格: CoinGecko（暗号資産）、Finnhub / Alpha Vantage（株・ETF、adapter で差し替え可）
 - 為替: Bank of Canada Valet API（USD/CAD）
@@ -43,51 +44,61 @@ npm test          # vitest
 
 ## セットアップ
 
-### 1. Supabase
+### 1. Vercel と Neon
 
-1. Supabase でプロジェクトを作る（リージョンは `ca-central-1` 推奨）
-2. `supabase/migrations/` の SQL を順番に流す
-   - Supabase CLI: `supabase link --project-ref <ref>` → `supabase db push`
-   - または SQL Editor に 2 ファイルを順に貼って実行
-3. Authentication → Sign In / Providers → **「Allow new users to sign up」をオフ**（自分専用のため）
-4. Authentication → Users → **Add user** で自分のメールとパスワードを作る（「Auto Confirm User」をオン）
-   - ユーザーが作られると、トリガーで初期データ（BTC、口座「Kraken」、初期価格、2026-10-12 のレポート）が入ります
+1. Vercel → **Add New → Project** → この GitHub リポジトリを Import（Framework: Next.js）
+2. プロジェクトの **Storage → Create Database → Neon**（Free）→ Connect
+   - `DATABASE_URL`（pooled）と `DATABASE_URL_UNPOOLED` などが自動で環境変数に入る
+3. **Settings → Environment Variables** に追加（Production / Preview / Development）
+   - `SESSION_SECRET`: 32 文字以上のランダム文字列（`openssl rand -hex 32`）
+   - `CRON_SECRET`: 同じくランダム文字列
+4. **Redeploy**。ビルドの最初に `scripts/migrate.mjs` が `db/migrations/*.sql` を流す（流したものは `schema_migrations` に記録され、2 回目以降はスキップ）
 
-### 2. 環境変数
+### 2. 自分のユーザーを作る
 
-`.env.example` を `.env.local` にコピーして埋める（Vercel では Project Settings → Environment Variables）。
+Neon の **SQL Editor**（Vercel の Storage 画面の「Open in Neon」から開ける）で 1 回だけ実行:
+
+```sql
+insert into app_users (email, password_hash)
+values ('you@example.com', crypt('ここに長いパスワード', gen_salt('bf', 10)));
+```
+
+- ユーザーが作られると、トリガーで初期データ（BTC、口座「Kraken」、初期価格、2026-10-12 のレポート）が入る
+- パスワードを変えるとき: `update app_users set password_hash = crypt('新しいパスワード', gen_salt('bf', 10)) where email = 'you@example.com';`
+- ローカルからなら `npm run user:create -- you@example.com 'パスワード'` でも同じ
+
+### 3. 初回の過去データ取り込み
+
+アプリにログイン → 設定 →「過去の価格を取り込む」（チャート用に 1 年分）。
+または `curl -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/backfill?days=365`
+
+### 4. スマホのホーム画面に追加
+
+- iPhone: Safari で開く → 共有 → 「ホーム画面に追加」
+- Android: Chrome で開く → メニュー → 「アプリをインストール」
+
+### 環境変数
 
 | 変数 | 必須 | 内容 |
 |---|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | ✓ | Supabase の Project URL |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✓ | publishable key（`sb_publishable_...`。旧 anon key でも可: `NEXT_PUBLIC_SUPABASE_ANON_KEY`） |
-| `SUPABASE_SECRET_KEY` | ✓ | secret key（`sb_secret_...`。旧 service_role key でも可: `SUPABASE_SERVICE_ROLE_KEY`）。Cron が RLS をバイパスして価格を書き込むのに使う。**ブラウザに出さない** |
-| `CRON_SECRET` | ✓ | Cron の認証用。16 文字以上のランダム文字列（`openssl rand -hex 32`） |
-| `ALLOWED_EMAILS` | | ログインを許可するメール（カンマ区切り）。二重の防御用 |
+| `DATABASE_URL` | ✓ | Neon の接続文字列（pooled）。Neon 連携で自動設定 |
+| `DATABASE_URL_UNPOOLED` | | マイグレーション用の直接接続。Neon 連携で自動設定 |
+| `SESSION_SECRET` | ✓ | ログイン Cookie の署名キー（32 文字以上） |
+| `CRON_SECRET` | ✓ | Cron の認証用（Vercel Cron が `Authorization: Bearer` で送る） |
 | `COINGECKO_API_KEY` | | CoinGecko Demo API キー（なくても動く） |
 | `STOCK_PRICE_PROVIDER` | | `finnhub`（既定）か `alphavantage` |
 | `FINNHUB_API_KEY` | | 株・ETF を追加したら必要 |
 | `ALPHAVANTAGE_API_KEY` | | Alpha Vantage を使う場合 |
 
-### 3. ローカルで動かす
+### ローカルで動かす
 
 ```bash
+cp .env.example .env.local   # DATABASE_URL などを入れる
 npm install
-npm run dev       # http://localhost:3000
+npm run db:migrate
+npm run user:create -- you@example.com 'パスワード'
+npm run dev                  # http://localhost:3000
 ```
-
-### 4. Vercel
-
-1. GitHub リポジトリを Vercel に Import（Framework: Next.js）
-2. 上の環境変数を入れて Deploy
-3. `vercel.json` の Cron が自動で登録される
-4. 初回だけ、過去の価格を取り込む（チャート用）: 設定 →「過去の価格を取り込む」
-   - または `curl -H "Authorization: Bearer $CRON_SECRET" https://<domain>/api/cron/backfill?days=365`
-
-### 5. スマホのホーム画面に追加
-
-- iPhone: Safari で開く → 共有 → 「ホーム画面に追加」
-- Android: Chrome で開く → メニュー → 「アプリをインストール」
 
 ---
 
@@ -118,10 +129,11 @@ npm run dev       # http://localhost:3000
 
 ## データ設計
 
-マイグレーション: `supabase/migrations/`
+マイグレーション: `db/migrations/`（ビルド時に自動適用）
 
 | テーブル | 内容 |
 |---|---|
+| `app_users` | ログインユーザー（メール、bcrypt ハッシュ） |
 | `user_settings` | 基準通貨（CAD）、タイムゾーン |
 | `accounts` | 口座。`account_type`: `tfsa` / `rrsp` / `fhsa` / `non_registered`（課税口座）/ `exchange`（取引所）、`currency` |
 | `assets` | 銘柄。`asset_type`: `crypto` / `stock` / `etf` / `cash`、`symbol`、`exchange`、`currency`、`price_source`、`source_id` |
@@ -132,19 +144,28 @@ npm run dev       # http://localhost:3000
 | `reports` | 毎朝のレポート |
 | `dca_plans` | 積立ルール（`asset_id`, `account_id`, `amount`, `frequency`, `day_of_week`, `day_of_month`, `start_date`, `is_active`） |
 
-全テーブルで RLS を有効にし、`user_id = auth.uid()` の行だけ読み書きできます。
+### RLS（行レベルセキュリティ）
+
+全テーブルで RLS を有効にし、自分の `user_id` の行だけ読み書きできるようにしています。
+
+- アプリはリクエストごとにトランザクションを張り、`set_config('app.user_id', <ログイン中のユーザー>, true)` と `set local role maru_app` を実行してからクエリを流す（`src/lib/db.ts` の `withUser`）
+- `maru_app` はログインできないロールで、ポリシー `user_id = current_app_user()` が必ずかかる。`app_users` のパスワードハッシュは読めない
+- Cron・マイグレーション・Claude（Neon MCP）は所有者ロールで接続するので RLS をバイパスする
 
 ---
 
 ## Claude にレポートを書かせるときの手順書
 
-毎朝のレポートは Claude（予定タスク）が **Supabase MCP の `execute_sql`** で `public.reports` に直接 INSERT します。アプリは表示するだけです。
+毎朝のレポートは Claude（予定タスク）が **Neon MCP の `run_sql`**（Neon の公式 MCP サーバー `https://mcp.neon.tech/mcp` を Claude のコネクタに追加）で `public.reports` に直接 INSERT します。アプリは表示するだけです。
+
+- Neon のプロジェクトは Vercel 連携で作ったもの（Neon コンソールで名前を確認）。データベース名は通常 `neondb`
+- 所有者ロールで実行されるので RLS はかからない。`user_id` は必ず自分の ID を入れる
 
 ### テーブル: `public.reports`
 
 | カラム | 型 | 必須 | 内容 |
 |---|---|---|---|
-| `user_id` | uuid | ✓ | 自分のユーザー ID（下の例のようにメールから引く） |
+| `user_id` | uuid | ✓ | 自分のユーザー ID（下の例のように `app_users` のメールから引く） |
 | `report_date` | date | ✓ | レポートの日付（バンクーバー時間の今日。例 `'2026-10-13'`） |
 | `target` | text | ✓ | `'btc'` / `'portfolio'` / 銘柄ティッカー（`'VFV.TO'` など。`assets.symbol` と同じ表記にすると資産の詳細画面にも出る） |
 | `headline` | text | ✓ | 1 行の見出し（ホームに出る） |
@@ -165,7 +186,7 @@ npm run dev       # http://localhost:3000
 insert into public.reports
   (user_id, report_date, target, headline, stance, summary, dca_note, events, sources)
 values (
-  (select id from auth.users where email = 'YOUR_EMAIL@example.com'),
+  (select id from app_users where email = 'you@example.com'),
   '2026-10-13',
   'btc',
   'CPI前に$85K台で小動き。ETFフローは3日連続の流入',
@@ -206,7 +227,7 @@ select report_date, target, headline, stance from public.reports order by report
 
 ### 予定タスクのプロンプト例
 
-> 毎朝 6:45（バンクーバー時間）に実行。Supabase MCP で Maru Invest のプロジェクトに接続し、README の「Claude にレポートを書かせるときの手順書」に従って、今日の `target='btc'` のレポートを `public.reports` に INSERT して。価格と恐怖強欲指数は `prices` / `market_metrics` の最新値を使い、ニュースは出典 URL を `sources` に入れる。売買の推奨は書かない。
+> 毎朝 6:45（バンクーバー時間）に実行。Neon MCP で Maru Invest のデータベース（neondb）に接続し、README の「Claude にレポートを書かせるときの手順書」に従って、今日の `target='btc'` のレポートを `public.reports` に INSERT して。価格と恐怖強欲指数は `prices` / `market_metrics` の最新値を使い、ニュースは出典 URL を `sources` に入れる。売買の推奨は書かない。
 
 ---
 
@@ -214,7 +235,8 @@ select report_date, target, headline, stance from public.reports order by report
 
 ```bash
 npm run dev        # 開発サーバー
-npm test           # ユニットテスト（計算ロジック）
+npm test           # ユニットテスト（計算ロジック・adapter）
+TEST_DATABASE_URL=postgres://... npm test   # DB を使う結合テストも動かす
 npm run typecheck  # 型チェック
 npm run lint       # ESLint
 npm run build      # 本番ビルド

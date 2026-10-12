@@ -51,6 +51,11 @@ export function PriceChart({
   }, [prices, avgCost, range]);
 
   const hasAvg = data.some((d) => d.avg !== null);
+  // 値幅が小さいときは小数 1 桁まで出して、目盛りの重複（119K, 119K）を避ける
+  const values = data.flatMap((d) => (d.avg !== null ? [d.close, d.avg] : [d.close]));
+  const span = values.length ? Math.max(...values) - Math.min(...values) : 0;
+  const tick = (v: number) =>
+    v >= 1000 ? `${(v / 1000).toFixed(span < 10_000 ? 1 : 0)}K` : v.toFixed(span < 10 ? 2 : 0);
 
   return (
     <div>
@@ -98,7 +103,7 @@ export function PriceChart({
                   tickLine={false}
                   axisLine={false}
                   width={52}
-                  tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 1000)}K` : String(Math.round(v)))}
+                  tickFormatter={tick}
                 />
                 <Tooltip
                   cursor={{ stroke: "var(--muted)", strokeWidth: 1 }}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageHeader, Section } from "@/components/ui";
-import { getDb, loadAccounts, loadAssets, requireUser } from "@/lib/data";
+import { requireUser } from "@/lib/auth";
+import { asUser, loadAccounts, loadAssets, loadBaseCurrency } from "@/lib/data";
 import { ENV_KEYS } from "@/lib/env";
 import { AccountForm, AssetForm, FetchButtons } from "./forms";
 
@@ -8,12 +9,11 @@ export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const user = await requireUser();
-  const db = await getDb();
-  const [accounts, assets, settings] = await Promise.all([
-    loadAccounts(db),
-    loadAssets(db),
-    db.from("user_settings").select("base_currency").maybeSingle(),
-  ]);
+  const { accounts, assets, baseCurrency } = await asUser(async (tx) => ({
+    accounts: await loadAccounts(tx),
+    assets: await loadAssets(tx),
+    baseCurrency: await loadBaseCurrency(tx),
+  }));
 
   return (
     <>
@@ -57,7 +57,7 @@ export default async function SettingsPage() {
 
       <Section title="基準通貨">
         <div className="card p-4 text-sm">
-          <div className="font-semibold">{settings.data?.base_currency ?? "CAD"}</div>
+          <div className="font-semibold">{baseCurrency}</div>
           <p className="mt-1 text-xs text-muted">
             損益・ACB はカナダの税制に合わせて CAD で計算します。USD 建ての取引は取引日の為替レートで CAD に換算します。
           </p>
@@ -67,7 +67,7 @@ export default async function SettingsPage() {
       <Section title="API キー（環境変数）">
         <ul className="card divide-y divide-border text-sm">
           {ENV_KEYS.map((e) => {
-            const set = Boolean(process.env[e.key] ?? ("alt" in e ? process.env[e.alt] : undefined));
+            const set = Boolean(process.env[e.key]);
             return (
               <li key={e.key} className="flex items-center justify-between gap-2 px-4 py-2.5">
                 <div className="min-w-0">

@@ -1,6 +1,6 @@
 import "server-only";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, todayIn } from "../calc/dates";
+import type { ownerSql } from "../db";
 import type { PriceSource } from "../types";
 import { fetchFearGreed } from "./feargreed";
 import { fetchBocFx } from "./fx";
@@ -10,7 +10,10 @@ import type { AssetRef, Quote } from "./types";
 /**
  * 毎朝のデータ取得。各ステップは独立して try/catch し、1 つ失敗しても他は続ける。
  * 失敗した場合は前回の値が DB に残るので、画面は「◯日前の値」として表示する。
+ * 所有者ロール（RLS をバイパス）で全ユーザー分を書き込む。
  */
+
+type Db = ReturnType<typeof ownerSql>;
 
 export interface StepResult {
   step: string;
@@ -36,26 +39,21 @@ async function step(name: string, results: StepResult[], fn: () => Promise<numbe
   }
 }
 
-async function loadAssets(db: SupabaseClient, userId?: string): Promise<AssetRow[]> {
-  let q = db
-    .from("assets")
-    .select("id, user_id, symbol, source_id, currency, price_source, asset_type")
-    .eq("is_active", true)
-    .neq("asset_type", "cash");
-  if (userId) q = q.eq("user_id", userId);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  return (data ?? []) as AssetRow[];
+async function loadAssets(db: Db, userId?: string): Promise<AssetRow[]> {
+  return userId
+    ? db<AssetRow[]>`select id, user_id, symbol, source_id, currency, price_source, asset_type from assets
+        where is_active and asset_type <> 'cash' and user_id = ${userId}`
+    : db<AssetRow[]>`select id, user_id, symbol, source_id, currency, price_source, asset_type from assets
+        where is_active and asset_type <> 'cash'`;
 }
 
-async function loadUserIds(db: SupabaseClient, userId?: string): Promise<string[]> {
+async function loadUserIds(db: Db, userId?: string): Promise<string[]> {
   if (userId) return [userId];
-  const { data, error } = await db.from("user_settings").select("user_id");
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r: { user_id: string }) => r.user_id);
+  const rows = await db<{ id: string }[]>`select id from app_users`;
+  return rows.map((r) => r.id);
 }
 
-async function upsertQuotes(db: SupabaseClient, assets: AssetRow[], quotes: Quote[], keepExisting = false) {
+async function upsertQuotes(db: Db, assets: AssetRow[], quotes: Quote[], keepExisting = false) {
   const owner = new Map(assets.map((a) => [a.id, a.user_id]));
   const rows = quotes
     .filter((q) => owner.has(q.assetId))
@@ -66,14 +64,15 @@ async function upsertQuotes(db: SupabaseClient, assets: AssetRow[], quotes: Quot
       close: q.close,
       currency: q.currency,
       source: q.source,
-      fetched_at: new Date().toISOString(),
     }));
   if (rows.length === 0) return 0;
   // 過去データの取り込みでは、既にある行（手入力・seed・毎朝の取得分）を上書きしない
-  const { error } = await db
-    .from("prices")
-    .upsert(rows, { onConflict: "user_id,asset_id,date,currency", ignoreDuplicates: keepExisting });
-  if (error) throw new Error(error.message);
+  if (keepExisting) {
+    await db`insert into prices ${db(rows)} on conflict (user_id, asset_id, date, currency) do nothing`;
+  } else {
+    await db`insert into prices ${db(rows)} on conflict (user_id, asset_id, date, currency)
+      do update set close = excluded.close, source = excluded.source, fetched_at = now()`;
+  }
   return rows.length;
 }
 
@@ -88,38 +87,28 @@ function groupBySource(assets: AssetRow[]) {
   return groups;
 }
 
-async function fetchFx(db: SupabaseClient, userIds: string[], opts: Parameters<typeof fetchBocFx>[1]) {
+async function fetchFx(db: Db, userIds: string[], opts: Parameters<typeof fetchBocFx>[1]) {
   const obs = await fetchBocFx("USD", opts);
-  const rows = userIds.flatMap((user_id) =>
-    obs.map((o) => ({ user_id, ...o, fetched_at: new Date().toISOString() })),
-  );
+  const rows = userIds.flatMap((user_id) => obs.map((o) => ({ user_id, ...o })));
   if (rows.length === 0) return 0;
-  const { error } = await db.from("fx_rates").upsert(rows, { onConflict: "user_id,date,base,quote" });
-  if (error) throw new Error(error.message);
+  await db`insert into fx_rates ${db(rows)} on conflict (user_id, date, base, quote)
+    do update set rate = excluded.rate, source = excluded.source, fetched_at = now()`;
   return rows.length;
 }
 
-async function fetchFng(db: SupabaseClient, userIds: string[], limit: number) {
+async function fetchFng(db: Db, userIds: string[], limit: number) {
   const fg = await fetchFearGreed(limit);
   const rows = userIds.flatMap((user_id) =>
-    fg.map((f) => ({
-      user_id,
-      date: f.date,
-      metric: "fear_greed",
-      value: f.value,
-      label: f.label,
-      source: "alternative.me",
-      fetched_at: new Date().toISOString(),
-    })),
+    fg.map((f) => ({ user_id, date: f.date, metric: "fear_greed", value: f.value, label: f.label, source: "alternative.me" })),
   );
   if (rows.length === 0) return 0;
-  const { error } = await db.from("market_metrics").upsert(rows, { onConflict: "user_id,date,metric" });
-  if (error) throw new Error(error.message);
+  await db`insert into market_metrics ${db(rows)} on conflict (user_id, date, metric)
+    do update set value = excluded.value, label = excluded.label, source = excluded.source, fetched_at = now()`;
   return rows.length;
 }
 
 /** 毎朝の取得（userId を渡すとその人の分だけ） */
-export async function runDailyFetch(db: SupabaseClient, opts: { userId?: string } = {}): Promise<StepResult[]> {
+export async function runDailyFetch(db: Db, opts: { userId?: string } = {}): Promise<StepResult[]> {
   const results: StepResult[] = [];
   const today = todayIn(TZ);
   let assets: AssetRow[] = [];
@@ -154,7 +143,7 @@ export async function runDailyFetch(db: SupabaseClient, opts: { userId?: string 
 
 /** 過去データの取り込み（チャート用）。days 日分 */
 export async function runBackfill(
-  db: SupabaseClient,
+  db: Db,
   opts: { userId?: string; days?: number } = {},
 ): Promise<StepResult[]> {
   const days = opts.days ?? 365;

@@ -1,4 +1,4 @@
-// DB の行に対応する型（Supabase のテーブル定義と揃える）
+// DB の行に対応する型（db/migrations のテーブル定義と揃える）
 
 export type AccountType = "tfsa" | "rrsp" | "fhsa" | "non_registered" | "exchange";
 export type AssetType = "crypto" | "stock" | "etf" | "cash";

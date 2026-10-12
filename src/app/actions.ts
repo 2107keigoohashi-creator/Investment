@@ -3,10 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { computeTransactionAmounts } from "@/lib/calc/transaction";
-import { allowedEmails } from "@/lib/env";
+import { checkPassword, endSession, requireUser, startSession } from "@/lib/auth";
+import { ownerSql, withUser, type Tx } from "@/lib/db";
 import { runBackfill, runDailyFetch } from "@/lib/market/jobs";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import type { AccountType, AssetType, DcaFrequency, PriceSource, TransactionType } from "@/lib/types";
 
 export interface ActionState {
@@ -24,12 +23,19 @@ const numOf = (fd: FormData, k: string) => {
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 const isCurrency = (s: string) => /^[A-Z]{3}$/.test(s);
 
-async function userClient() {
-  const db = await createClient();
-  const { data } = await db.auth.getClaims();
-  const userId = data?.claims?.sub as string | undefined;
-  if (!userId) redirect("/login");
-  return { db, userId };
+/** ログイン中のユーザーとして（RLS 付きで）書き込む */
+async function asUser<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  const { userId } = await requireUser();
+  return withUser(userId, fn);
+}
+
+/** Postgres のエラーコード（23505 = 一意制約違反、23503 = 外部キー違反） */
+function pgCode(e: unknown): string | undefined {
+  return typeof e === "object" && e && "code" in e ? String((e as { code: unknown }).code) : undefined;
+}
+
+function message(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 function revalidateAll() {
@@ -44,19 +50,19 @@ export async function signIn(_: ActionState, fd: FormData): Promise<ActionState>
   const email = str(fd, "email").toLowerCase();
   const password = str(fd, "password");
   const next = str(fd, "next");
-  const allowed = allowedEmails();
-  if (allowed.length > 0 && !allowed.includes(email)) {
-    return { error: "このメールアドレスではログインできません" };
+  if (!email || !password) return { error: "メールアドレスとパスワードを入力してください" };
+  const session = await checkPassword(email, password);
+  if (!session) {
+    // 総当たり対策に少し待つ
+    await new Promise((r) => setTimeout(r, 800));
+    return { error: "メールアドレスかパスワードが違います" };
   }
-  const db = await createClient();
-  const { error } = await db.auth.signInWithPassword({ email, password });
-  if (error) return { error: "メールアドレスかパスワードが違います" };
+  await startSession(session);
   redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
 }
 
 export async function signOut() {
-  const db = await createClient();
-  await db.auth.signOut();
+  await endSession();
   redirect("/login");
 }
 
@@ -67,7 +73,6 @@ export async function signOut() {
 const TX_TYPES: TransactionType[] = ["buy", "sell", "deposit", "withdraw", "dividend", "fee", "transfer"];
 
 export async function createTransaction(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { db } = await userClient();
   const type = str(fd, "type") as TransactionType;
   if (!TX_TYPES.includes(type)) return { error: "取引の種類が不正です" };
 
@@ -102,7 +107,7 @@ export async function createTransaction(_: ActionState, fd: FormData): Promise<A
   }
 
   const amounts = computeTransactionAmounts({ type, quantity, price, fee, fxRate: fx_rate, amount: amountIn });
-  const { error } = await db.from("transactions").insert({
+  const row = {
     account_id,
     asset_id,
     type,
@@ -117,17 +122,20 @@ export async function createTransaction(_: ActionState, fd: FormData): Promise<A
     fee_cad: amounts.feeCad,
     transfer_account_id: type === "transfer" ? transfer_account_id : null,
     note: optStr(fd, "note"),
-  });
-  if (error) return { error: `保存できませんでした: ${error.message}` };
+  };
+  try {
+    await asUser((tx) => tx`insert into transactions ${tx(row)}`);
+  } catch (e) {
+    return { error: `保存できませんでした: ${message(e)}` };
+  }
   revalidateAll();
   const back = str(fd, "redirect_to");
   redirect(back.startsWith("/") && !back.startsWith("//") ? back : "/");
 }
 
 export async function deleteTransaction(fd: FormData) {
-  const { db } = await userClient();
   const id = str(fd, "id");
-  if (id) await db.from("transactions").delete().eq("id", id);
+  if (id) await asUser((tx) => tx`delete from transactions where id = ${id}`);
   revalidateAll();
 }
 
@@ -138,7 +146,6 @@ export async function deleteTransaction(fd: FormData) {
 const ACCOUNT_TYPES: AccountType[] = ["tfsa", "rrsp", "fhsa", "non_registered", "exchange"];
 
 export async function saveAccount(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { db } = await userClient();
   const id = optStr(fd, "id");
   const name = str(fd, "name");
   const account_type = str(fd, "account_type") as AccountType;
@@ -154,17 +161,23 @@ export async function saveAccount(_: ActionState, fd: FormData): Promise<ActionS
     // 編集フォームにはチェックボックスがある。新規は有効で作る
     is_active: id ? fd.get("is_active") === "on" : true,
   };
-  const { error } = id ? await db.from("accounts").update(row).eq("id", id) : await db.from("accounts").insert(row);
-  if (error) return { error: error.code === "23505" ? "同じ名前の口座があります" : error.message };
+  try {
+    await asUser((tx) =>
+      id ? tx`update accounts set ${tx(row)} where id = ${id}` : tx`insert into accounts ${tx(row)}`,
+    );
+  } catch (e) {
+    return { error: pgCode(e) === "23505" ? "同じ名前の口座があります" : message(e) };
+  }
   revalidateAll();
   return { ok: id ? "口座を更新しました" : "口座を追加しました" };
 }
 
 export async function deleteAccount(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { db } = await userClient();
-  const { error } = await db.from("accounts").delete().eq("id", str(fd, "id"));
-  if (error) {
-    return { error: error.code === "23503" ? "取引がある口座は削除できません（無効にしてください）" : error.message };
+  const id = str(fd, "id");
+  try {
+    await asUser((tx) => tx`delete from accounts where id = ${id}`);
+  } catch (e) {
+    return { error: pgCode(e) === "23503" ? "取引や積立ルールがある口座は削除できません（無効にしてください）" : message(e) };
   }
   revalidateAll();
   return { ok: "口座を削除しました" };
@@ -174,7 +187,6 @@ const ASSET_TYPES: AssetType[] = ["crypto", "stock", "etf", "cash"];
 const PRICE_SOURCES: PriceSource[] = ["coingecko", "finnhub", "alphavantage", "manual"];
 
 export async function saveAsset(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { db } = await userClient();
   const id = optStr(fd, "id");
   const symbol = str(fd, "symbol").toUpperCase();
   const asset_type = str(fd, "asset_type") as AssetType;
@@ -193,23 +205,33 @@ export async function saveAsset(_: ActionState, fd: FormData): Promise<ActionSta
     price_source,
     source_id: optStr(fd, "source_id"),
   };
-  const { error } = id ? await db.from("assets").update(row).eq("id", id) : await db.from("assets").insert(row);
-  if (error) return { error: error.code === "23505" ? "同じティッカーの銘柄があります" : error.message };
+  try {
+    await asUser((tx) =>
+      id ? tx`update assets set ${tx(row)} where id = ${id}` : tx`insert into assets ${tx(row)}`,
+    );
+  } catch (e) {
+    return { error: pgCode(e) === "23505" ? "同じティッカーの銘柄があります" : message(e) };
+  }
   revalidateAll();
   return { ok: id ? "銘柄を更新しました" : "銘柄を追加しました" };
 }
 
 export async function addManualPrice(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { db } = await userClient();
   const asset_id = str(fd, "asset_id");
   const date = str(fd, "date");
   const close = numOf(fd, "close");
   const currency = str(fd, "currency").toUpperCase() || "CAD";
   if (!asset_id || !isDate(date) || !(close > 0) || !isCurrency(currency)) return { error: "入力が不正です" };
-  const { error } = await db
-    .from("prices")
-    .upsert({ asset_id, date, close, currency, source: "manual" }, { onConflict: "user_id,asset_id,date,currency" });
-  if (error) return { error: error.message };
+  try {
+    await asUser(
+      (tx) => tx`insert into prices (asset_id, date, close, currency, source)
+        values (${asset_id}, ${date}, ${close}, ${currency}, 'manual')
+        on conflict (user_id, asset_id, date, currency)
+        do update set close = excluded.close, source = 'manual', fetched_at = now()`,
+    );
+  } catch (e) {
+    return { error: message(e) };
+  }
   revalidateAll();
   return { ok: "価格を保存しました" };
 }
@@ -221,7 +243,6 @@ export async function addManualPrice(_: ActionState, fd: FormData): Promise<Acti
 const FREQUENCIES: DcaFrequency[] = ["daily", "weekly", "biweekly", "monthly"];
 
 export async function saveDcaPlan(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { db } = await userClient();
   const frequency = str(fd, "frequency") as DcaFrequency;
   const amount = numOf(fd, "amount");
   const start_date = str(fd, "start_date");
@@ -231,7 +252,7 @@ export async function saveDcaPlan(_: ActionState, fd: FormData): Promise<ActionS
   if (!isDate(start_date)) return { error: "開始日が不正です" };
   const dow = str(fd, "day_of_week");
   const dom = str(fd, "day_of_month");
-  const { error } = await db.from("dca_plans").insert({
+  const row = {
     asset_id: str(fd, "asset_id"),
     account_id: str(fd, "account_id"),
     amount,
@@ -241,21 +262,26 @@ export async function saveDcaPlan(_: ActionState, fd: FormData): Promise<ActionS
     day_of_month: frequency === "monthly" ? (dom === "" ? null : Math.min(31, Math.max(1, Number(dom)))) : null,
     start_date,
     note: optStr(fd, "note"),
-  });
-  if (error) return { error: error.message };
+  };
+  try {
+    await asUser((tx) => tx`insert into dca_plans ${tx(row)}`);
+  } catch (e) {
+    return { error: message(e) };
+  }
   revalidateAll();
   return { ok: "積立ルールを追加しました" };
 }
 
 export async function toggleDcaPlan(fd: FormData) {
-  const { db } = await userClient();
-  await db.from("dca_plans").update({ is_active: str(fd, "is_active") === "true" }).eq("id", str(fd, "id"));
+  const id = str(fd, "id");
+  const active = str(fd, "is_active") === "true";
+  await asUser((tx) => tx`update dca_plans set is_active = ${active} where id = ${id}`);
   revalidateAll();
 }
 
 export async function deleteDcaPlan(fd: FormData) {
-  const { db } = await userClient();
-  await db.from("dca_plans").delete().eq("id", str(fd, "id"));
+  const id = str(fd, "id");
+  await asUser((tx) => tx`delete from dca_plans where id = ${id}`);
   revalidateAll();
 }
 
@@ -264,16 +290,13 @@ export async function deleteDcaPlan(fd: FormData) {
 // ---------------------------------------------------------------------------
 
 export async function fetchNow(_: ActionState, fd: FormData): Promise<ActionState> {
-  const { userId } = await userClient();
+  const { userId } = await requireUser();
   const mode = str(fd, "mode");
-  let admin;
-  try {
-    admin = createAdminClient();
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
-  }
+  // 自分の分だけ取得する（所有者ロールで書き込み）
   const results =
-    mode === "backfill" ? await runBackfill(admin, { userId, days: 365 }) : await runDailyFetch(admin, { userId });
+    mode === "backfill"
+      ? await runBackfill(ownerSql(), { userId, days: 365 })
+      : await runDailyFetch(ownerSql(), { userId });
   revalidateAll();
   const failed = results.filter((r) => !r.ok);
   const summary = results.map((r) => `${r.step}: ${r.ok ? `OK（${r.rows ?? 0}件）` : `失敗 – ${r.error}`}`).join("\n");

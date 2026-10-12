@@ -34,7 +34,7 @@ export function AllocationChart({ slices }: { slices: Slice[] }) {
               nameKey="label"
               innerRadius="62%"
               outerRadius="100%"
-              stroke="var(--surface)"
+              stroke={data.length > 1 ? "var(--surface)" : "none"}
               strokeWidth={2}
               startAngle={90}
               endAngle={-270}

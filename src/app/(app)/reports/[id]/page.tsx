@@ -1,19 +1,16 @@
 import { notFound } from "next/navigation";
 import { SimpleMarkdown } from "@/components/SimpleMarkdown";
 import { PageHeader, Section } from "@/components/ui";
-import { getDb, normalizeReport, requireUser } from "@/lib/data";
+import { asUser, loadReport } from "@/lib/data";
 import { formatDateJa } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportPage({ params }: PageProps<"/reports/[id]">) {
-  await requireUser();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const db = await getDb();
-  const { data } = await db.from("reports").select("*").eq("id", id).maybeSingle();
-  if (!data) notFound();
-  const r = normalizeReport(data);
+  const r = await asUser((tx) => loadReport(tx, id));
+  if (!r) notFound();
   return (
     <>
       <PageHeader title="レポート" back="/reports" />

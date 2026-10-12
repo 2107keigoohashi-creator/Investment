@@ -2,16 +2,14 @@ import Link from "next/link";
 import { ReportList } from "@/components/ReportList";
 import { PageHeader } from "@/components/ui";
 import { todayIn } from "@/lib/calc/dates";
-import { getDb, loadReports, requireUser, TZ } from "@/lib/data";
+import { asUser, loadReports, TZ } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage({ searchParams }: PageProps<"/reports">) {
-  await requireUser();
   const sp = await searchParams;
   const target = typeof sp.target === "string" ? sp.target : undefined;
-  const db = await getDb();
-  const all = await loadReports(db, { limit: 200 });
+  const all = await asUser((tx) => loadReports(tx, { limit: 200 }));
   const targets = [...new Set(all.map((r) => r.target.toLowerCase()))];
   const reports = target ? all.filter((r) => r.target.toLowerCase() === target.toLowerCase()) : all;
   return (

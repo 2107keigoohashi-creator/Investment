@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AllocationChart } from "@/components/AllocationChart";
 import { Empty, Section, StaleBadge } from "@/components/ui";
 import { unrealizedPct } from "@/lib/calc/portfolio";
-import { getDb, latestMetric, loadPortfolio, loadReports } from "@/lib/data";
+import { asUser, latestMetric, loadPortfolio, loadReports } from "@/lib/data";
 import {
   ACCOUNT_TYPE_LABEL,
   formatDateJa,
@@ -17,12 +17,11 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const db = await getDb();
-  const [p, fearGreed, reports] = await Promise.all([
-    loadPortfolio(),
-    latestMetric(db, "fear_greed"),
-    loadReports(db, { limit: 1 }),
-  ]);
+  const { p, fearGreed, reports } = await asUser(async (tx) => ({
+    p: await loadPortfolio(tx),
+    fearGreed: await latestMetric(tx, "fear_greed"),
+    reports: await loadReports(tx, { limit: 1 }),
+  }));
   const { valuation: v, assets, accounts, quotes, today } = p;
   const report = reports[0] ?? null;
   const hasHoldings = v.holdings.length > 0;
