@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AllocationChart } from "@/components/AllocationChart";
+import { LiveRefresher } from "@/components/LiveRefresher";
 import { Empty, Section, StaleBadge } from "@/components/ui";
 import { unrealizedPct } from "@/lib/calc/portfolio";
 import { asUser, latestMetric, loadPortfolio, loadReports } from "@/lib/data";
@@ -13,14 +14,19 @@ import {
   signClass,
   staleLabel,
 } from "@/lib/format";
+import { loadNews } from "@/lib/news/data";
+import { ensureFreshNews } from "@/lib/news/fetch";
+import { NewsList } from "./news/NewsList";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const { p, fearGreed, reports } = await asUser(async (tx) => ({
+  await ensureFreshNews();
+  const { p, fearGreed, reports, news } = await asUser(async (tx) => ({
     p: await loadPortfolio(tx),
     fearGreed: await latestMetric(tx, "fear_greed"),
     reports: await loadReports(tx, { limit: 1 }),
+    news: await loadNews(tx, { limit: 4 }),
   }));
   const { valuation: v, assets, accounts, quotes, today } = p;
   const report = reports[0] ?? null;
@@ -28,7 +34,9 @@ export default async function HomePage() {
   const prevTotal = v.total.marketValue - v.total.dayChange;
   const dayPct = prevTotal > 0 ? (v.total.dayChange / prevTotal) * 100 : null;
   const assetById = new Map(assets.map((a) => [a.id, a]));
-  const tracked = assets.filter((a) => a.is_active && a.asset_type !== "cash");
+  // ホームの価格欄は「持っている銘柄 + BTC」だけ。ほかはマーケット画面で見る
+  const heldIds = new Set(v.holdings.map((h) => h.assetId));
+  const tracked = assets.filter((a) => a.asset_type !== "cash" && (heldIds.has(a.id) || (a.is_active && a.symbol === "BTC")));
 
   return (
     <>
@@ -36,6 +44,9 @@ export default async function HomePage() {
         <h1 className="text-xl font-bold">Maru Invest</h1>
         <span className="text-sm text-muted">{formatDateJa(today)}</span>
       </header>
+      <div className="-mt-3 mb-3">
+        <LiveRefresher ids={tracked.map((a) => a.id)} />
+      </div>
 
       {/* 総資産 */}
       <section className="card mb-5 p-5">
@@ -98,7 +109,7 @@ export default async function HomePage() {
       </Section>
 
       {/* 価格 */}
-      <Section title="価格">
+      <Section title="価格" action={<Link href="/market" className="text-sm text-accent">マーケット</Link>}>
         <ul className="card divide-y divide-border">
           {tracked.map((a) => {
             const q = quotes[a.id];
@@ -138,6 +149,19 @@ export default async function HomePage() {
           )}
         </ul>
       </Section>
+
+      <Section title="ニュース" action={<Link href="/news" className="text-sm text-accent">もっと見る</Link>}>
+        {news.length > 0 ? <NewsList items={news} compact /> : <Empty>ニュースを取得中です</Empty>}
+      </Section>
+
+      <div className="mb-5 grid grid-cols-2 gap-2">
+        <Link href="/market" className="card px-4 py-3 text-sm font-semibold">
+          マーケット<span className="block text-xs font-normal text-muted">BTC 関連・米国株・カナダ株</span>
+        </Link>
+        <Link href="/simulator" className="card px-4 py-3 text-sm font-semibold">
+          シミュレーター<span className="block text-xs font-normal text-muted">積立を過去で試す</span>
+        </Link>
+      </div>
 
       {hasHoldings && (
         <>

@@ -90,3 +90,25 @@ export const FREQUENCY_LABEL: Record<string, string> = {
 };
 
 export const WEEKDAY_LABEL = WEEKDAYS;
+
+/** 「3時間前」「2日前」 */
+export function timeAgo(iso: string | null | undefined, now: number = Date.now()): string {
+  if (!iso) return "";
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
+  if (s < 60) return "たった今";
+  if (s < 3600) return `${Math.floor(s / 60)}分前`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}時間前`;
+  return `${Math.floor(s / 86_400)}日前`;
+}
+
+/** バンクーバー時間の「10/12 6:05」 */
+export function formatDateTimeVan(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "America/Vancouver",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}

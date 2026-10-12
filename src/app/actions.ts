@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { computeTransactionAmounts } from "@/lib/calc/transaction";
 import { checkPassword, endSession, requireUser, startSession } from "@/lib/auth";
 import { ownerSql, withUser, type Tx } from "@/lib/db";
-import { runBackfill, runDailyFetch } from "@/lib/market/jobs";
+import { backfillAsset, runBackfill, runDailyFetch } from "@/lib/market/jobs";
+import { fetchYahooQuote } from "@/lib/market/yahoo";
+import { lastNewsFetch, refreshNews } from "@/lib/news/fetch";
 import type { AccountType, AssetType, DcaFrequency, PriceSource, TransactionType } from "@/lib/types";
 
 export interface ActionState {
@@ -184,7 +186,7 @@ export async function deleteAccount(_: ActionState, fd: FormData): Promise<Actio
 }
 
 const ASSET_TYPES: AssetType[] = ["crypto", "stock", "etf", "cash"];
-const PRICE_SOURCES: PriceSource[] = ["coingecko", "finnhub", "alphavantage", "manual"];
+const PRICE_SOURCES: PriceSource[] = ["coingecko", "yahoo", "finnhub", "alphavantage", "manual"];
 
 export async function saveAsset(_: ActionState, fd: FormData): Promise<ActionState> {
   const id = optStr(fd, "id");
@@ -301,4 +303,88 @@ export async function fetchNow(_: ActionState, fd: FormData): Promise<ActionStat
   const failed = results.filter((r) => !r.ok);
   const summary = results.map((r) => `${r.step}: ${r.ok ? `OK（${r.rows ?? 0}件）` : `失敗 – ${r.error}`}`).join("\n");
   return failed.length ? { error: summary } : { ok: summary };
+}
+
+// ---------------------------------------------------------------------------
+// マーケット（ウォッチリスト）
+// ---------------------------------------------------------------------------
+
+/** 検索結果から銘柄をウォッチに追加する（価格は Yahoo Finance から取る） */
+export async function addWatch(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { userId } = await requireUser();
+  const symbol = str(fd, "symbol").toUpperCase();
+  const type = str(fd, "type");
+  if (!/^[A-Z0-9.\-=^]{1,20}$/.test(symbol)) return { error: "ティッカーが不正です" };
+  if (!["stock", "etf", "crypto"].includes(type)) return { error: "種類が不正です" };
+
+  let quote: Awaited<ReturnType<typeof fetchYahooQuote>> = null;
+  try {
+    quote = await fetchYahooQuote(symbol);
+  } catch {
+    // 価格が取れなくても追加はする（次の取得で入る）
+  }
+  const currency = quote?.currency ?? (symbol.endsWith(".TO") || symbol.endsWith(".V") ? "CAD" : "USD");
+  const isCa = symbol.endsWith(".TO") || symbol.endsWith(".V") || symbol.endsWith(".NE");
+  const name = str(fd, "name") || quote?.name || symbol;
+  const btcRelated = /bitcoin|btc/i.test(name);
+  const category =
+    type === "crypto" ? "crypto" : btcRelated ? (type === "etf" ? "btc_etf" : "btc_stock") : type === "etf" ? "index_etf" : isCa ? "ca_stock" : "us_stock";
+
+  const row = {
+    symbol,
+    name,
+    asset_type: type,
+    exchange: optStr(fd, "exchange"),
+    currency: isCurrency(currency) ? currency : "USD",
+    price_source: "yahoo",
+    source_id: symbol,
+    category,
+    is_active: true,
+  };
+  let assetId: string;
+  try {
+    const [r] = await withUser(userId, (tx) =>
+      tx<{ id: string }[]>`insert into assets ${tx(row)}
+        on conflict (user_id, symbol) do update set is_active = true returning id`,
+    );
+    assetId = r.id;
+  } catch (e) {
+    return { error: message(e) };
+  }
+  // 価格と過去 1 年分のチャートを入れておく
+  if (quote) {
+    await withUser(userId, (tx) =>
+      tx`insert into prices (asset_id, date, close, currency, source)
+        values (${assetId}, ${quote.date}, ${quote.price}, ${quote.currency}, 'yahoo')
+        on conflict (user_id, asset_id, date, currency) do nothing`,
+    ).catch(() => {});
+  }
+  await backfillAsset(ownerSql(), assetId).catch(() => {});
+  revalidateAll();
+  return { ok: `${symbol} を追加しました` };
+}
+
+/** ウォッチから外す（取引の記録は残る） */
+export async function setWatch(fd: FormData) {
+  const id = str(fd, "id");
+  const active = str(fd, "is_active") === "true";
+  await asUser((tx) => tx`update assets set is_active = ${active} where id = ${id}`);
+  revalidateAll();
+}
+
+// ---------------------------------------------------------------------------
+// ニュース
+// ---------------------------------------------------------------------------
+
+export async function refreshNewsNow(): Promise<ActionState> {
+  await requireUser();
+  const last = await lastNewsFetch();
+  // 連打しても Google に負担をかけないよう 10 分あける
+  if (last && Date.now() - Date.parse(last) < 10 * 60_000) {
+    return { ok: "さっき更新したばかりです（10 分あけてください）" };
+  }
+  const r = await refreshNews();
+  revalidatePath("/news");
+  revalidatePath("/");
+  return r.errors.length ? { error: `一部取れませんでした: ${r.errors.join(" / ")}` } : { ok: `${r.inserted} 件の新しいニュース` };
 }

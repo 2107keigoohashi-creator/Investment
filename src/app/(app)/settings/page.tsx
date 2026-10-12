@@ -17,7 +17,7 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="設定" />
+      <PageHeader title="設定" back="/menu" />
 
       <Section title="口座">
         <ul className="space-y-2">
@@ -33,16 +33,24 @@ export default async function SettingsPage() {
       </Section>
 
       <Section title="銘柄">
-        <ul className="space-y-2">
-          {assets.map((a) => (
-            <li key={a.id}>
-              <AssetForm asset={a} />
+        <p className="mb-2 px-1 text-xs text-muted">
+          銘柄の追加はマーケット画面の検索が簡単です。ここでは取得元や名前を細かく変えられます。
+        </p>
+        <details className="card p-4">
+          <summary className="cursor-pointer list-none font-semibold">
+            銘柄の一覧（{assets.length}）<span className="float-right text-muted">›</span>
+          </summary>
+          <ul className="mt-3 space-y-2">
+            {assets.map((a) => (
+              <li key={a.id}>
+                <AssetForm asset={a} />
+              </li>
+            ))}
+            <li>
+              <AssetForm />
             </li>
-          ))}
-          <li>
-            <AssetForm />
-          </li>
-        </ul>
+          </ul>
+        </details>
       </Section>
 
       <Section title="データ">

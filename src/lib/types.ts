@@ -2,7 +2,8 @@
 
 export type AccountType = "tfsa" | "rrsp" | "fhsa" | "non_registered" | "exchange";
 export type AssetType = "crypto" | "stock" | "etf" | "cash";
-export type PriceSource = "coingecko" | "finnhub" | "alphavantage" | "manual";
+export type PriceSource = "coingecko" | "yahoo" | "finnhub" | "alphavantage" | "manual";
+export type AssetCategory = "crypto" | "btc_etf" | "btc_stock" | "us_stock" | "ca_stock" | "index_etf" | "other";
 export type TransactionType = "buy" | "sell" | "deposit" | "withdraw" | "dividend" | "fee" | "transfer";
 export type DcaFrequency = "daily" | "weekly" | "biweekly" | "monthly";
 
@@ -27,6 +28,7 @@ export interface Asset {
   currency: string;
   price_source: PriceSource;
   source_id: string | null;
+  category: AssetCategory;
   is_active: boolean;
 }
 
@@ -117,4 +119,13 @@ export const REGISTERED_ACCOUNT_TYPES: readonly AccountType[] = ["tfsa", "rrsp",
 
 export function isTaxableAccount(type: AccountType): boolean {
   return !REGISTERED_ACCOUNT_TYPES.includes(type);
+}
+
+export interface NewsItem {
+  id: number;
+  category: string;
+  title: string;
+  url: string;
+  source: string | null;
+  published_at: string | null;
 }

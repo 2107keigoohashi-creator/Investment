@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { setWatch } from "@/app/actions";
+import { LiveRefresher } from "@/components/LiveRefresher";
 import { PriceChart } from "@/components/PriceChart";
 import { ReportList } from "@/components/ReportList";
 import { TxList } from "@/components/TxList";
@@ -7,6 +9,8 @@ import { PageHeader, Section, StaleBadge } from "@/components/ui";
 import { averageCost, averageCostHistory, computeLedger } from "@/lib/calc/acb";
 import { todayIn } from "@/lib/calc/dates";
 import { cadSeries, latestCadQuote, unrealizedPct } from "@/lib/calc/portfolio";
+import { ownerSql } from "@/lib/db";
+import { backfillAsset } from "@/lib/market/jobs";
 import { asUser, loadAccounts, loadAssetBySymbol, loadFx, loadPrices, loadReports, loadTransactions, TZ } from "@/lib/data";
 import { ACCOUNT_TYPE_LABEL, ASSET_TYPE_LABEL, formatMoney, formatPct, formatQty, formatSigned, signClass, staleLabel } from "@/lib/format";
 import { ManualPriceForm } from "./ManualPriceForm";
@@ -29,7 +33,18 @@ export default async function AssetPage({ params }: PageProps<"/assets/[symbol]"
     };
   });
   if (!data) notFound();
-  const { asset, accounts, transactions, prices, fx, reports } = data;
+  const { asset, accounts, transactions, reports } = data;
+  let { prices, fx } = data;
+  // 初めて開いた銘柄はチャート用に過去 1 年分を取り込む
+  if (prices.length < 20 && (asset.price_source === "yahoo" || asset.price_source === "coingecko")) {
+    const r = await backfillAsset(ownerSql(), asset.id).catch(() => []);
+    if (r.some((x) => x.ok)) {
+      ({ prices, fx } = await asUser(async (tx) => ({
+        prices: await loadPrices(tx, { assetId: asset.id }),
+        fx: await loadFx(tx),
+      })));
+    }
+  }
   const today = todayIn(TZ);
   const ledger = computeLedger(transactions, accounts);
   const positions = ledger.positions.filter((p) => p.assetId === asset.id);
@@ -41,7 +56,9 @@ export default async function AssetPage({ params }: PageProps<"/assets/[symbol]"
   const unrealized = mv !== null ? mv - acb : null;
   const avg = averageCost({ quantity, acb });
   const series = cadSeries(prices, fx).map(({ date, close }) => ({ date, close }));
+  // CAD 以外の通貨での最新値（BTC の USD、米国株の USD）
   const usd = prices.filter((p) => p.currency === "USD").at(-1);
+  const held = quantity > 0;
   const chg = quote?.prevPrice ? ((quote.price - quote.prevPrice) / quote.prevPrice) * 100 : null;
 
   return (
@@ -59,6 +76,10 @@ export default async function AssetPage({ params }: PageProps<"/assets/[symbol]"
         {asset.name} · {ASSET_TYPE_LABEL[asset.asset_type]}
         {asset.exchange ? ` · ${asset.exchange}` : ""}
       </p>
+
+      <div className="-mt-2 mb-3">
+        <LiveRefresher ids={[asset.id]} />
+      </div>
 
       <section className="card mb-5 p-4">
         <div className="flex items-baseline gap-2">
@@ -136,6 +157,16 @@ export default async function AssetPage({ params }: PageProps<"/assets/[symbol]"
       <Section title="価格を手入力">
         <ManualPriceForm assetId={asset.id} defaultCurrency={asset.currency} today={today} />
       </Section>
+
+      {!held && (
+        <form action={setWatch} className="mb-4 text-center">
+          <input type="hidden" name="id" value={asset.id} />
+          <input type="hidden" name="is_active" value={String(!asset.is_active)} />
+          <button type="submit" className="text-sm text-muted underline">
+            {asset.is_active ? "マーケットの一覧から外す" : "マーケットの一覧に戻す"}
+          </button>
+        </form>
+      )}
     </>
   );
 }

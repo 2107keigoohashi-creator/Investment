@@ -93,8 +93,9 @@ export function AssetForm({ asset }: { asset?: Asset }) {
           </select>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <select name="price_source" defaultValue={asset?.price_source ?? "finnhub"} className="field" aria-label="価格の取得元">
+          <select name="price_source" defaultValue={asset?.price_source ?? "yahoo"} className="field" aria-label="価格の取得元">
             <option value="coingecko">CoinGecko</option>
+            <option value="yahoo">Yahoo Finance（キー不要）</option>
             <option value="finnhub">Finnhub</option>
             <option value="alphavantage">Alpha Vantage</option>
             <option value="manual">手入力</option>

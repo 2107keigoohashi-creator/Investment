@@ -13,7 +13,7 @@ export default async function TransactionsPage() {
   }));
   return (
     <>
-      <PageHeader title="取引履歴" back="/settings" action={<Link href="/transactions/new" className="btn btn-primary text-sm">記録</Link>} />
+      <PageHeader title="取引履歴" back="/menu" action={<Link href="/transactions/new" className="btn btn-primary text-sm">記録</Link>} />
       <TxList transactions={transactions} accounts={accounts} assets={assets} />
     </>
   );

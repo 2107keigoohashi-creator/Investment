@@ -10,7 +10,7 @@ if (!url) {
   process.exit(0);
 }
 
-const sql = postgres(url, { max: 1, onnotice: () => {} });
+const sql = postgres(url, { max: 1, prepare: false, onnotice: () => {} });
 const dir = path.join(process.cwd(), "db", "migrations");
 
 try {

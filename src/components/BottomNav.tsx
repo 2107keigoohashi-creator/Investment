@@ -3,11 +3,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const items = [
-  { href: "/", label: "ホーム", icon: "M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" },
-  { href: "/reports", label: "レポート", icon: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7" },
-  { href: "/transactions/new", label: "記録", icon: "M12 5v14M5 12h14", primary: true },
-  { href: "/dca", label: "積立", icon: "M4 19h16M7 16V9M12 16V5M17 16v-4" },
-  { href: "/settings", label: "設定", icon: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" },
+  { href: "/", label: "ホーム", icon: "M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z", match: ["/"] },
+  { href: "/market", label: "マーケット", icon: "M3 17l5-5 4 4 8-8M15 8h5v5", match: ["/market", "/assets"] },
+  { href: "/transactions/new", label: "記録", icon: "M12 5v14M5 12h14", primary: true, match: ["/transactions/new"] },
+  { href: "/news", label: "ニュース", icon: "M4 5h13v14H6a2 2 0 0 1-2-2zM17 9h3v8a2 2 0 0 1-2 2M8 9h5M8 13h5", match: ["/news"] },
+  {
+    href: "/menu",
+    label: "メニュー",
+    icon: "M4 7h16M4 12h16M4 17h16",
+    match: ["/menu", "/reports", "/dca", "/simulator", "/settings", "/transactions"],
+  },
 ];
 
 export function BottomNav() {
@@ -19,7 +24,11 @@ export function BottomNav() {
     >
       <ul className="mx-auto grid max-w-xl grid-cols-5">
         {items.map((it) => {
-          const active = it.href === "/" ? pathname === "/" : pathname.startsWith(it.href);
+          const active =
+            it.href === "/"
+              ? pathname === "/"
+              : it.match.some((m) => pathname === m || pathname.startsWith(`${m}/`)) &&
+                !(it.href === "/menu" && pathname.startsWith("/transactions/new"));
           return (
             <li key={it.href}>
               <Link

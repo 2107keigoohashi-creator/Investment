@@ -6,6 +6,7 @@ import { fetchFearGreed } from "./feargreed";
 import { fetchBocFx } from "./fx";
 import { getProvider } from "./registry";
 import type { AssetRef, Quote } from "./types";
+import { mapLimit } from "./yahoo";
 
 /**
  * 毎朝のデータ取得。各ステップは独立して try/catch し、1 つ失敗しても他は続ける。
@@ -157,18 +158,40 @@ export async function runBackfill(
     return assets.length;
   });
 
-  for (const a of assets) {
+  // 銘柄が多いので 3 つずつ並行して取る
+  await mapLimit(assets, 3, async (a) => {
     const provider = getProvider(a.price_source);
-    if (!provider?.fetchHistory) continue;
+    if (!provider?.fetchHistory) return;
     await step(`history:${a.symbol}`, results, async () => {
       if (!provider.isConfigured()) throw new Error(`取得元 ${a.price_source} の API キーが設定されていません`);
       const quotes = await provider.fetchHistory!(a, days);
       return upsertQuotes(db, assets, quotes, true);
     });
-  }
+  });
 
   const start = addDays(todayIn(TZ), -days);
   await step("fx:USDCAD", results, () => fetchFx(db, userIds, { startDate: start }));
   await step("fear_greed", results, () => fetchFng(db, userIds, Math.min(days, 365)));
+  return results;
+}
+
+/** 1 銘柄だけ過去データを取り込む（銘柄を追加したとき・詳細画面を初めて開いたとき） */
+export async function backfillAsset(db: Db, assetId: string, days = 365): Promise<StepResult[]> {
+  const results: StepResult[] = [];
+  const assets = await db<AssetRow[]>`select id, user_id, symbol, source_id, currency, price_source, asset_type
+    from assets where id = ${assetId}`;
+  const a = assets[0];
+  if (!a) return results;
+  const provider = getProvider(a.price_source);
+  if (provider?.fetchHistory && provider.isConfigured()) {
+    await step(`history:${a.symbol}`, results, async () => upsertQuotes(db, assets, await provider.fetchHistory!(a, days), true));
+  }
+  // USD 建ての換算に使う為替の履歴がまだ少なければ一緒に入れる
+  if (a.currency !== "CAD") {
+    const [{ n }] = await db<{ n: number }[]>`select count(*)::int as n from fx_rates where user_id = ${a.user_id} and base = ${a.currency}`;
+    if (n < 100) {
+      await step("fx:USDCAD", results, () => fetchFx(db, [a.user_id], { startDate: addDays(todayIn(TZ), -days) }));
+    }
+  }
   return results;
 }

@@ -30,7 +30,7 @@ export default async function DcaPage() {
 
   return (
     <>
-      <PageHeader title="積立（DCA）" />
+      <PageHeader title="積立（DCA）" back="/menu" />
 
       <Section title="積立ルール">
         {plans.length === 0 ? (

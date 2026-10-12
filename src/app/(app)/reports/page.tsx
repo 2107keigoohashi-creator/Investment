@@ -14,7 +14,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
   const reports = target ? all.filter((r) => r.target.toLowerCase() === target.toLowerCase()) : all;
   return (
     <>
-      <PageHeader title="レポート" />
+      <PageHeader title="レポート" back="/menu" />
       {targets.length > 1 && (
         <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4">
           <Link href="/reports" className="chip" aria-current={!target ? "page" : undefined}>
